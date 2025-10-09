@@ -57,7 +57,27 @@ def transition_model(corpus, page, damping_factor):
     linked to by `page`. With probability `1 - damping_factor`, choose
     a link at random chosen from all pages in the corpus.
     """
-    raise NotImplementedError
+    # corpus:           Python dictionary mapping a page name to a set of all pages linked to by that page.
+    # page:             String representing which page the random surfer is currently on.
+    # damping_factor:   Floating point number representing the damping factor to be used when generating the probabilities.
+
+    pages = corpus.keys()
+    num_pages = len(pages)
+    links = corpus[page]
+
+    model = dict()
+
+    if not links:
+        for p in pages:
+            model[p] = 1 / num_pages
+        return model
+    
+    for p in pages:
+        model[p] = (1 - damping_factor) / num_pages
+        if p in links:
+            model[p] += damping_factor / len(links)
+    
+    return model
 
 
 def sample_pagerank(corpus, damping_factor, n):
@@ -69,7 +89,30 @@ def sample_pagerank(corpus, damping_factor, n):
     their estimated PageRank value (a value between 0 and 1). All
     PageRank values should sum to 1.
     """
-    raise NotImplementedError
+    if n <= 0:
+        # Degenerate case: uniform distribution
+        return {p: 1 / len(corpus) for p in corpus}
+
+    # Count visits
+    visits = {p: 0 for p in corpus}
+
+    # 1) pick a random start page and count it
+    page = random.choice(list(corpus.keys()))
+    visits[page] += 1
+
+    # 2) perform n-1 transitions using the transition model
+    for _ in range(1, n):
+        model = transition_model(corpus, page, damping_factor)
+        page = random.choices(
+            population=list(model.keys()),
+            weights=list(model.values()),
+            k=1
+        )[0]
+        visits[page] += 1
+
+    # 3) normalize visit counts to probabilities
+    total = sum(visits.values())
+    return {p: visits[p] / total for p in visits}
 
 
 def iterate_pagerank(corpus, damping_factor):
@@ -81,7 +124,55 @@ def iterate_pagerank(corpus, damping_factor):
     their estimated PageRank value (a value between 0 and 1). All
     PageRank values should sum to 1.
     """
-    raise NotImplementedError
+    pages = list(corpus.keys())
+    N = len(pages)
+    d = damping_factor
+
+    # Start uniformly
+    ranks = {p: 1 / N for p in pages}
+
+    # Precompute inbound links: who links to p
+    inbound = {p: set() for p in pages}
+    for q, outs in corpus.items():
+        if outs:
+            for p in outs:
+                inbound[p].add(q)
+
+    # Iteration until convergence
+    EPS = 0.001
+    while True:
+        new_ranks = {}
+        # Total rank mass on dangling pages (no outlinks)
+        dangling_mass = sum(ranks[q] for q, outs in corpus.items() if len(outs) == 0)
+
+        for p in pages:
+            # Base random jump
+            rank = (1 - d) / N
+
+            # Distributed dangling mass contributes equally to all pages
+            rank += d * dangling_mass / N
+
+            # Normal link-based contributions
+            link_sum = 0.0
+            for q in inbound[p]:
+                # (won't be 0 because inbound excludes dangling)
+                Lq = len(corpus[q]) if len(corpus[q]) > 0 else N
+                link_sum += ranks[q] / Lq
+            rank += d * link_sum
+
+            new_ranks[p] = rank
+
+        # Check convergence (max absolute change below EPS for all pages)
+        delta = max(abs(new_ranks[p] - ranks[p]) for p in pages)
+        ranks = new_ranks
+        if delta < EPS:
+            break
+
+    # Optional tiny normalization to fix rounding drift
+    s = sum(ranks.values())
+    if s != 0:
+        ranks = {p: r / s for p, r in ranks.items()}
+    return ranks
 
 
 if __name__ == "__main__":
