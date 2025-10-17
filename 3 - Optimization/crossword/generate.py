@@ -99,7 +99,8 @@ class CrosswordCreator():
         (Remove any values that are inconsistent with a variable's unary
          constraints; in this case, the length of the word.)
         """
-        raise NotImplementedError
+        for var in self.crossword.variables:
+            self.domains[var] = {w for w in self.domains[var] if len(w) == var.length}
 
     def revise(self, x, y):
         """
@@ -110,7 +111,22 @@ class CrosswordCreator():
         Return True if a revision was made to the domain of `x`; return
         False if no revision was made.
         """
-        raise NotImplementedError
+        overlap = self.crossword.overlaps[x, y]
+        if overlap is None or x == y:
+            return False
+
+        i, j = overlap
+        to_remove = set()
+
+        for dx in self.domains[x]:
+            # Remove dx if NO dy matches at the overlap
+            if all(dx[i] != dy[j] for dy in self.domains[y]):
+                to_remove.add(dx)
+
+        if to_remove:
+            self.domains[x] -= to_remove
+            return True
+        return False
 
     def ac3(self, arcs=None):
         """
@@ -121,21 +137,59 @@ class CrosswordCreator():
         Return True if arc consistency is enforced and no domains are empty;
         return False if one or more domains end up empty.
         """
-        raise NotImplementedError
+        if arcs is None:
+            queue = [
+                (x, y)
+                for x in self.crossword.variables
+                for y in self.crossword.neighbors(x) if y != x
+            ]
+        else:
+            queue = arcs
+
+        while queue:
+            x, y = queue.pop(0)
+            if self.revise(x, y):
+                if not self.domains[x]:
+                    return False
+                for z in self.crossword.neighbors(x):
+                    if z != y:
+                        queue.append((z, x))
+        return True
 
     def assignment_complete(self, assignment):
         """
         Return True if `assignment` is complete (i.e., assigns a value to each
         crossword variable); return False otherwise.
         """
-        raise NotImplementedError
+        return all(var in assignment for var in self.crossword.variables)
 
     def consistent(self, assignment):
         """
         Return True if `assignment` is consistent (i.e., words fit in crossword
         puzzle without conflicting characters); return False otherwise.
         """
-        raise NotImplementedError
+        # Lenghts match
+        for var, word in assignment.items():
+            if len(word) != var.length:
+                return False
+                
+        # All words distinct
+        words = list(assignment.values())
+        # turning the list into a set removes duplicates
+        if len(words) != len(set(words)):
+            return False
+        
+        # Overlap constraints
+        for x, word_x in assignment.items():
+            for y in self.crossword.neighbors(x):
+                if y in assignment:
+                    overlap = self.crossword.overlaps[x, y]
+                    if overlap is None:
+                        continue
+                    i, j = overlap
+                    if word_x[i] != assignment[y][j]:
+                        return False
+        return True
 
     def order_domain_values(self, var, assignment):
         """
@@ -144,7 +198,32 @@ class CrosswordCreator():
         The first value in the list, for example, should be the one
         that rules out the fewest values among the neighbors of `var`.
         """
-        raise NotImplementedError
+        eliminations = {}
+
+        for word in self.domains[var]:
+            ruled_out = 0
+            for nb in self.crossword.neighbors(var):
+                if nb in assignment:
+                    # optional: if it conflicts with an assigned neighbor, penalize heavily
+                    overlap = self.crossword.overlaps[var, nb]
+                    if overlap is None:
+                        continue
+                    i, j = overlap
+                    if word[i] != assignment[nb][j]:
+                        # Make this word least preferred (could also skip counting entirely)
+                        ruled_out += float("inf")
+                    continue
+                overlap = self.crossword.overlaps[var, nb]
+                if overlap is None:
+                    continue
+                i, j = overlap
+                # Count how many neighbor-domain values would be ruled out
+                for nb_word in self.domains[nb]:
+                    if word[i] != nb_word[j]:
+                        ruled_out += 1
+            eliminations[word] = ruled_out
+
+        return sorted(self.domains[var], key=lambda w: eliminations[w])
 
     def select_unassigned_variable(self, assignment):
         """
@@ -154,7 +233,20 @@ class CrosswordCreator():
         degree. If there is a tie, any of the tied variables are acceptable
         return values.
         """
-        raise NotImplementedError
+        candidates = [v for v in self.crossword.variables if v not in assignment]
+        
+        # Minimum Remaining Variable (MRV)
+        mrv = {v: len(self.domains[v]) for v in candidates}
+        best_mrv = min(mrv.values())
+        mrv_tied = [v for v in candidates if mrv[v] == best_mrv]
+        if len(mrv_tied) == 1:
+            return mrv_tied[0]
+        
+        # Degree (unassigned neighbors)
+        def degree(v):
+            return sum(1 for n in self.crossword.neighbors(v) if n not in assignment)
+        
+        return max(mrv_tied, key=degree)
 
     def backtrack(self, assignment):
         """
@@ -165,8 +257,38 @@ class CrosswordCreator():
 
         If no assignment is possible, return None.
         """
-        raise NotImplementedError
+        # Base case
+        if self.assignment_complete(assignment):
+            return assignment
+        
+        # Choose an unassigned variable (MRV + degree)
+        var = self.select_unassigned_variable(assignment)
 
+        # Try values (LCV order)
+        for value in self.order_domain_values(var, assignment):
+            # Tentatively assign
+            assignment[var] = value
+
+            # Check consistency with current partial assignment
+            if self.consistent(assignment):
+                # Optional AC-3
+                # Save domains and prune
+                saved_domains = {v: set(self.domains[v]) for v in self.domains}
+
+                self.domains[var] = {value}
+
+                arcs = [(n, var) for n in self.crossword.neighbors(var)]
+                if self.ac3(arcs=arcs):
+                    result = self.backtrack(assignment)
+                    if result is not None:
+                        return result
+                self.domains = saved_domains
+            # Undo (backtrack)
+            del assignment[var]
+        
+        # No value worked
+        return None
+    
 
 def main():
 
