@@ -1,127 +1,71 @@
-""" Identify Human Handwriting with Trained Neural Network """
+"""
+Load a trained handwriting.keras model and recognize digits drawn with pygame.
+Press:
+  - Left mouse button to draw
+  - Right mouse button to clear
+  - Enter/Return to predict
+"""
 
 import sys
-
-import numpy as np
 import pygame
+import numpy as np
 import tensorflow as tf
 
-# Check command-line arguments
-if len(sys.argv) != 2:
-    sys.exit("Usage: python recognition.py model")
-model = tf.keras.models.load_model(sys.argv[1])
+# Load model
+MODEL_PATH = sys.argv[1] if len(sys.argv) > 1 else "handwriting.keras"
+model = tf.keras.models.load_model(MODEL_PATH)
 
-# Colors
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-
-# Start pygame
+# Pygame setup
 pygame.init()
-size = width, height = 600, 400
-screen = pygame.display.set_mode(size)
+WIDTH, HEIGHT = 280, 280
+WHITE, BLACK = (255, 255, 255), (0, 0, 0)
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Draw a digit (Enter = predict, Right-click = clear)")
 
-# Fonts
-OPEN_SANS = "assets/fonts/OpenSans-Regular.ttf"
-smallFont = pygame.font.Font(OPEN_SANS, 20)
-largeFont = pygame.font.Font(OPEN_SANS, 40)
+# Drawing loop
+drawing = True
+screen.fill(WHITE)
+pygame.display.update()
 
-ROWS, COLS = 28, 28
-
-OFFSET = 20
-CELL_SIZE = 10
-
-handwriting = [[0] * COLS for _ in range(ROWS)]
-classification = None
-
-while True:
-
-    # Check if game quit
+while drawing:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            sys.exit()
+            drawing = False
 
-    screen.fill(BLACK)
+        # Draw black circles with left mouse button
+        if pygame.mouse.get_pressed()[0]:
+            pos = pygame.mouse.get_pos()
+            pygame.draw.circle(screen, BLACK, pos, 12)
 
-    # Check for mouse press
-    click, _, _ = pygame.mouse.get_pressed()
-    if click == 1:
-        mouse = pygame.mouse.get_pos()
-    else:
-        mouse = None
+        # Clear with right button
+        if pygame.mouse.get_pressed()[2]:
+            screen.fill(WHITE)
 
-    # Draw each grid cell
-    cells = []
-    for i in range(ROWS):
-        row = []
-        for j in range(COLS):
-            rect = pygame.Rect(
-                OFFSET + j * CELL_SIZE,
-                OFFSET + i * CELL_SIZE,
-                CELL_SIZE, CELL_SIZE
-            )
+        # Press Enter to predict
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+            # Convert screen to 28x28 grayscale array
+            raw_str = pygame.surfarray.array3d(screen)
+            gray = np.dot(raw_str[..., :3], [0.2989, 0.5870, 0.1140])
+            gray = np.rot90(gray, k=3)
+            gray = np.fliplr(gray)
+            gray = pygame.surfarray.make_surface(gray)
+            img_array = pygame.surfarray.array3d(gray)
+            img_array = np.dot(img_array[..., :3], [0.2989, 0.5870, 0.1140])
+            img = pygame.surfarray.array3d(screen)
+            img = np.dot(img[..., :3], [0.2989, 0.5870, 0.1140])
+            img = np.rot90(img, k=3)
+            img = np.fliplr(img)
+            img = np.array(img, dtype="float32") / 255.0
 
-            # If cell has been written on, darken cell
-            if handwriting[i][j]:
-                channel = 255 - (handwriting[i][j] * 255)
-                pygame.draw.rect(screen, (channel, channel, channel), rect)
+            # Resize to 28x28 and invert colors
+            img = tf.image.resize(img[..., np.newaxis], (28, 28))
+            img = 1 - img  # because white background → 0
 
-            # Draw blank cell
-            else:
-                pygame.draw.rect(screen, WHITE, rect)
-            pygame.draw.rect(screen, BLACK, rect, 1)
+            # Predict
+            pred = model.predict(img[np.newaxis, ...], verbose=0)
+            digit = np.argmax(pred[0])
+            print(f"🧮 Predicted digit: {digit}")
 
-            # If writing on this cell, fill in current cell and neighbors
-            if mouse and rect.collidepoint(mouse):
-                handwriting[i][j] = 250 / 255
-                if i + 1 < ROWS:
-                    handwriting[i + 1][j] = 220 / 255
-                if j + 1 < COLS:
-                    handwriting[i][j + 1] = 220 / 255
-                if i + 1 < ROWS and j + 1 < COLS:
-                    handwriting[i + 1][j + 1] = 190 / 255
+    pygame.display.update()
 
-    # Reset button
-    resetButton = pygame.Rect(
-        30, OFFSET + ROWS * CELL_SIZE + 30,
-        100, 30
-    )
-    resetText = smallFont.render("Reset", True, BLACK)
-    resetTextRect = resetText.get_rect()
-    resetTextRect.center = resetButton.center
-    pygame.draw.rect(screen, WHITE, resetButton)
-    screen.blit(resetText, resetTextRect)
-
-    # Classify button
-    classifyButton = pygame.Rect(
-        150, OFFSET + ROWS * CELL_SIZE + 30,
-        100, 30
-    )
-    classifyText = smallFont.render("Classify", True, BLACK)
-    classifyTextRect = classifyText.get_rect()
-    classifyTextRect.center = classifyButton.center
-    pygame.draw.rect(screen, WHITE, classifyButton)
-    screen.blit(classifyText, classifyTextRect)
-
-    # Reset drawing
-    if mouse and resetButton.collidepoint(mouse):
-        handwriting = [[0] * COLS for _ in range(ROWS)]
-        classification = None
-
-    # Generate classification
-    if mouse and classifyButton.collidepoint(mouse):
-        classification = model.predict(
-            [np.array(handwriting).reshape(1, 28, 28, 1)]
-        ).argmax()
-
-    # Show classification if one exists
-    if classification is not None:
-        classificationText = largeFont.render(str(classification), True, WHITE)
-        classificationRect = classificationText.get_rect()
-        grid_size = OFFSET * 2 + CELL_SIZE * COLS
-        classificationRect.center = (
-            grid_size + ((width - grid_size) / 2),
-            100
-        )
-        screen.blit(classificationText, classificationRect)
-
-    pygame.display.flip()
+pygame.quit()

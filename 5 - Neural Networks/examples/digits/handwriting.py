@@ -1,61 +1,42 @@
-""" Train the Neural Network with MNIST dataset """
+"""
+Train a convolutional neural network to recognize handwritten digits
+(using the MNIST dataset) and save the model as handwriting.keras
+"""
 
-import os
-import sys
 import tensorflow as tf
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# Load MNIST data (60 000 train + 10 000 test)
+(X_train, y_train), (X_test, y_test) = tf.keras.datasets.mnist.load_data()
 
-# Use MNIST handwriting dataset
-mnist = tf.keras.datasets.mnist
+# Normalize and add channel dimension -> (n, 28, 28, 1)
+X_train = X_train.astype("float32") / 255.0
+X_test = X_test.astype("float32") / 255.0
+X_train = X_train[..., tf.newaxis]
+X_test = X_test[..., tf.newaxis]
 
-# Prepare data for training
-(x_train, y_train), (x_test, y_test) = mnist.load_data()
-x_train, x_test = x_train / 255.0, x_test / 255.0
-y_train = tf.keras.utils.to_categorical(y_train)
-y_test = tf.keras.utils.to_categorical(y_test)
-x_train = x_train.reshape(
-    x_train.shape[0], x_train.shape[1], x_train.shape[2], 1
-)
-x_test = x_test.reshape(
-    x_test.shape[0], x_test.shape[1], x_test.shape[2], 1
-)
-
-# Create a convolutional neural network
-model = tf.keras.models.Sequential([
-
-    # Convolutional layer. Learn 32 filters using a 3x3 kernel
-    tf.keras.layers.Conv2D(
-        32, (3, 3), activation="relu", input_shape=(28, 28, 1)
-    ),
-
-    # Max-pooling layer, using 2x2 pool size
-    tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
-
-    # Flatten units
+# Build CNN model (modern Keras 3 style)
+model = tf.keras.Sequential([
+    tf.keras.layers.Input(shape=(28, 28, 1)),
+    tf.keras.layers.Conv2D(32, (3, 3), activation="relu"),
+    tf.keras.layers.MaxPooling2D((2, 2)),
+    tf.keras.layers.Conv2D(64, (3, 3), activation="relu"),
+    tf.keras.layers.MaxPooling2D((2, 2)),
     tf.keras.layers.Flatten(),
-
-    # Add a hidden layer with dropout
     tf.keras.layers.Dense(128, activation="relu"),
-    tf.keras.layers.Dropout(0.5),
-
-    # Add an output layer with output units for all 10 digits
     tf.keras.layers.Dense(10, activation="softmax")
 ])
 
-# Train neural network
-model.compile(
-    optimizer="adam",
-    loss="categorical_crossentropy",
-    metrics=["accuracy"]
-)
-model.fit(x_train, y_train, epochs=10)
+# Compile & train
+model.compile(optimizer="adam",
+              loss="sparse_categorical_crossentropy",
+              metrics=["accuracy"])
 
-# Evaluate neural network performance
-model.evaluate(x_test,  y_test, verbose=2)
+model.fit(X_train, y_train, epochs=5, batch_size=32, validation_split=0.1, verbose=2)
 
-# Save model to file
-if len(sys.argv) == 2:
-    filename = sys.argv[1]
-    model.save(filename)
-    print(f"Model saved to {filename}.")
+# Evaluate
+model.evaluate(X_test, y_test, verbose=1)
+
+# Save in new .keras format
+model.save("handwriting.keras")
+
+print("✅ Model saved as handwriting.keras")

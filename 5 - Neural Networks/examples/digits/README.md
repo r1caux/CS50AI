@@ -10,7 +10,7 @@ This example shows the implementation of training a neural network to identify h
 
 `recognition.py` is a pygame which allows you to hand write something and the trained neural network will identify the digit you wrote (not certain, but the best probability)
 
-In the `digits` directory, run the command `python recognition.py model.h5`
+In the `digits` directory, run the command `python recognition.py hanwriting.keras`
 
 A pygame window should pop up and you can use your mouse to draw something
 

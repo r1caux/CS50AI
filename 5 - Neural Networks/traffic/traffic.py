@@ -58,7 +58,44 @@ def load_data(data_dir):
     be a list of integer labels, representing the categories for each of the
     corresponding `images`.
     """
-    raise NotImplementedError
+    images = []
+    labels = []
+
+    # Iterate deterministically over category folders "0" .. "NUM_CATEGORIES-1"
+    for label in range(NUM_CATEGORIES):
+        category_dir = os.path.join(data_dir, str(label))
+        if not os.path.isdir(category_dir):
+            # If a category directory is missing, skip
+            continue
+
+        # Walk files in the category directory (non-recursive)
+        for fname in os.listdir(category_dir):
+            fpath = os.path.join(category_dir, fname)
+
+            # Skip subdirectories or hidden/system files
+            if not os.path.isfile(fpath):
+                continue
+
+            # Read image in color (BGR, OpenCV default). If unreadable, skip
+            img = cv2.imread(fpath, cv2.IMREAD_COLOR)
+            if img is None:
+                continue
+
+            # Resize to required width and height
+            try:
+                img_resized = cv2.resize(img, (IMG_WIDTH, IMG_HEIGHT), interpolation=cv2.INTER_AREA)
+            except Exception:
+                # If resizing fails for any reason, skip
+                continue
+
+            # Ensure data type is uint8
+            if img_resized.dtype != np.uint8:
+                img_resized = img_resized.astype(np.uint8, copy=False)
+            
+            images.append(img_resized)
+            labels.append(label)
+    
+    return images, labels
 
 
 def get_model():
@@ -67,7 +104,43 @@ def get_model():
     `input_shape` of the first layer is `(IMG_WIDTH, IMG_HEIGHT, 3)`.
     The output layer should have `NUM_CATEGORIES` units, one for each category.
     """
-    raise NotImplementedError
+    model = tf.keras.Sequential([
+        # Input + normalization
+        tf.keras.layers.Input(shape=(IMG_WIDTH, IMG_HEIGHT, 3)),
+        tf.keras.layers.Rescaling(1.0 / 255),
+
+        # Block 1
+        tf.keras.layers.Conv2D(32, (3, 3), padding="same", activation="relu"),
+        tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.Conv2D(32, (3, 3), activation="relu"),
+        tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
+        tf.keras.layers.Dropout(0.25),
+
+        # Block 2
+        tf.keras.layers.Conv2D(64, (3, 3), padding="same", activation="relu"),
+        tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.Conv2D(64, (3, 3), activation="relu"),
+        tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
+        tf.keras.layers.Dropout(0.25),
+
+        # Classifier head
+        tf.keras.layers.Flatten(),
+        tf.keras.layers.Dense(256, activation="relu"),
+        tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.Dropout(0.5),
+        tf.keras.layers.Dense(NUM_CATEGORIES, activation="softmax"),
+    ])
+
+    # If your labels are one-hot encoded, keep categorical_crossentropy.
+    # If they’re integer class IDs, switch to 'sparse_categorical_crossentropy'.
+    model.compile(
+        optimizer="adam",
+        loss="categorical_crossentropy",
+        metrics=["accuracy"]
+    )
+    return model
 
 
 if __name__ == "__main__":
