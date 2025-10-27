@@ -59,7 +59,54 @@ def load_data(filename):
     labels should be the corresponding list of labels, where each label
     is 1 if Revenue is true, and 0 otherwise.
     """
-    raise NotImplementedError
+    # Mapping of month abbreviations to numeric indices (Jan = 0, ..., Dec = 11)
+    MONTHS = {
+        "Jan": 0, "Feb": 1, "Mar": 2, "Apr": 3, "May": 4, "June": 5,
+        "Jul": 6, "Aug": 7, "Sep": 8, "Oct": 9, "Nov": 10, "Dec": 11
+    }
+
+    # Helper: convert "TRUE"/"FALSE" strings to integer 1/0
+    def tf_to_int(s: str) -> int:
+        return 1 if s.strip().lower() == "true" else 0
+    
+    # Helper: convert "Returning_Visitor" to 1, any other visitor type to 0
+    def visitor_to_int(s: str) -> int:
+        return 1 if s == "Returning_Visitor" else 0
+
+    # Initialize empty lists to hold evidence and labels
+    evidence, labels = [], []
+
+    # Open CSV file and read its contents into a dictionary per row
+    with open(filename) as f:
+        reader = csv.DictReader(f)
+
+        # Convert each row into numerical evidence and label
+        for row in reader:
+            evidence.append([
+                int(row["Administrative"]),
+                float(row["Administrative_Duration"]),
+                int(row["Informational"]),
+                float(row["Informational_Duration"]),
+                int(row["ProductRelated"]),
+                float(row["ProductRelated_Duration"]),
+                float(row["BounceRates"]),
+                float(row["ExitRates"]),
+                float(row["PageValues"]),
+                float(row["SpecialDay"]),
+                MONTHS[row["Month"]],
+                int(row["OperatingSystems"]),
+                int(row["Browser"]),
+                int(row["Region"]),
+                int(row["TrafficType"]),
+                visitor_to_int(row["VisitorType"]),
+                tf_to_int(row["Weekend"]),
+            ])
+
+            # Convert "Revenue" (TRUE/FALSE) → integer label 1/0
+            labels.append(tf_to_int(row["Revenue"]))
+
+    # Return both evidence and labels as separate lists
+    return evidence, labels
 
 
 def train_model(evidence, labels):
@@ -67,7 +114,9 @@ def train_model(evidence, labels):
     Given a list of evidence lists and a list of labels, return a
     fitted k-nearest neighbor model (k=1) trained on the data.
     """
-    raise NotImplementedError
+    # Create a k-nearest neighbors classifier using k=1 (only the closest neighbor)
+    # Fit the model to the training data (evidence + labels) and return it
+    return KNeighborsClassifier(n_neighbors=1).fit(evidence, labels)
 
 
 def evaluate(labels, predictions):
@@ -85,7 +134,29 @@ def evaluate(labels, predictions):
     representing the "true negative rate": the proportion of
     actual negative labels that were accurately identified.
     """
-    raise NotImplementedError
+    # Initialize counters for true positives/negatives and total positives/negatives
+    true_positive = true_negative = 0
+    positive = negative = 0
+
+    # Iterate through each (actual, predicted) pair simultaneously
+    for actual, predicted in zip(labels, predictions):
+        if actual == 1:
+            # Count total positives and correctly predicted positives
+            positive += 1
+            if predicted == 1: 
+                true_positive += 1
+        else:
+            # Count total negatives and correctly predicted negatives
+            negative += 1
+            if predicted == 0:
+                true_negative += 1
+
+    # Compute rates, guarding against division by zero
+    sensitivity = true_positive / positive if positive else 0
+    specificity = true_negative / negative if negative else 0
+
+    # Return both metrics as a tuple
+    return sensitivity, specificity
 
 
 if __name__ == "__main__":
