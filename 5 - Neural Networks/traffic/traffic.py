@@ -132,9 +132,7 @@ def get_model():
         tf.keras.layers.Dropout(0.5),
         tf.keras.layers.Dense(NUM_CATEGORIES, activation="softmax"),
     ])
-
-    # If your labels are one-hot encoded, keep categorical_crossentropy.
-    # If they’re integer class IDs, switch to 'sparse_categorical_crossentropy'.
+    
     model.compile(
         optimizer="adam",
         loss="categorical_crossentropy",
