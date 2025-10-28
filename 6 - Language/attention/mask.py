@@ -2,7 +2,7 @@ import sys
 import tensorflow as tf
 
 from PIL import Image, ImageDraw, ImageFont
-from transformers import AutoTokenizer, TFBertForMaskedLM
+from transformers import AutoTokenizer, TFBertForMaskedLM, BatchEncoding
 
 # Pre-trained masked language model
 MODEL = "bert-base-uncased"
@@ -40,14 +40,15 @@ def main():
     visualize_attentions(inputs.tokens(), result.attentions)
 
 
-def get_mask_token_index(mask_token_id, inputs):
+def get_mask_token_index(mask_token_id: int, inputs: BatchEncoding):
     """
     Return the index of the token with the specified `mask_token_id`, or
     `None` if not present in the `inputs`.
     """
-    # TODO: Implement this function
-    raise NotImplementedError
-
+    # Extract token IDs for the single input sentence and convert to a Python list
+    input_ids = inputs["input_ids"][0].numpy().tolist()
+    # Return the index of the mask token if present, otherwise None
+    return input_ids.index(mask_token_id) if mask_token_id in input_ids else None
 
 
 def get_color_for_attention_score(attention_score):
@@ -55,10 +56,15 @@ def get_color_for_attention_score(attention_score):
     Return a tuple of three integers representing a shade of gray for the
     given `attention_score`. Each value should be in the range [0, 255].
     """
-    # TODO: Implement this function
-    raise NotImplementedError
-
-
+    # Ensure the attention score is treated as a float tensor
+    x = tf.cast(attention_score, tf.float32)
+    # Clamp the value between 0 and 1 to prevent overflow or negative colors
+    x = tf.clip_by_value(x, 0.0, 1.0)
+    # Scale to [0, 255], round, cast to integer, and extract as a Python value
+    val = tf.cast(tf.round(x * 255.0), tf.int32).numpy().item()
+    # Return an RGB tuple representing a grayscale color
+    return (val, val, val)
+    
 
 def visualize_attentions(tokens, attentions):
     """
@@ -70,13 +76,23 @@ def visualize_attentions(tokens, attentions):
     include both the layer number (starting count from 1) and head number
     (starting count from 1).
     """
-    # TODO: Update this function to produce diagrams for all layers and heads.
-    generate_diagram(
-        1,
-        1,
-        tokens,
-        attentions[0][0][0]
-    )
+    # Loop over each attention layer in the model
+    for layer_idx in range(len(attentions)):
+        # Extract the attention tensor for this layer
+        layer_attn = attentions[layer_idx]
+        # Determine the number of attention heads in this layer
+        num_heads = layer_attn.shape[1]
+        # Loop through all attention heads in the layer
+        for head_idx in range(num_heads):
+            # Extract attention weights for this specific head (remove batch dimension)
+            weights = layer_attn[0, head_idx].numpy()
+            # Generate and save the attention visualization for this layer and head
+            generate_diagram(
+                layer_idx + 1,
+                head_idx + 1,
+                tokens,
+                weights
+            )
 
 
 def generate_diagram(layer_number, head_number, tokens, attention_weights):
