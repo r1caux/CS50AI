@@ -3,19 +3,34 @@ import sys
 
 TERMINALS = """
 Adj -> "country" | "dreadful" | "enigmatical" | "little" | "moist" | "red"
+
 Adv -> "down" | "here" | "never"
+
 Conj -> "and" | "until"
+
 Det -> "a" | "an" | "his" | "my" | "the"
+
 N -> "armchair" | "companion" | "day" | "door" | "hand" | "he" | "himself"
 N -> "holmes" | "home" | "i" | "mess" | "paint" | "palm" | "pipe" | "she"
 N -> "smile" | "thursday" | "walk" | "we" | "word"
+
 P -> "at" | "before" | "in" | "of" | "on" | "to"
+
 V -> "arrived" | "came" | "chuckled" | "had" | "lit" | "said" | "sat"
 V -> "smiled" | "tell" | "were"
 """
 
 NONTERMINALS = """
-S -> N V
+S    -> NP VP
+S    -> S Conj S
+
+NP   -> N | Det N | AdjP N | Det AdjP N | NP PP | NP Conj NP
+
+AdjP -> Adj | Adj AdjP
+
+VP   -> V | V NP | V PP | V Adv | Adv VP | VP Adv | VP PP | VP Conj VP
+
+PP   -> P NP
 """
 
 grammar = nltk.CFG.fromstring(NONTERMINALS + TERMINALS)
@@ -62,7 +77,19 @@ def preprocess(sentence):
     and removing any word that does not contain at least one alphabetic
     character.
     """
-    raise NotImplementedError
+    # Convert to lowercase
+    sentence = sentence.lower()
+
+    # Tokenize on alphanumeric chunks
+    tokenizer = nltk.tokenize.RegexpTokenizer(r'\w+')
+
+    # Create tokens
+    tokens = tokenizer.tokenize(sentence)
+
+    # Keep only tokens that contain at least one alphabetic char
+    filtered = [t for t in tokens if any(ch.isalpha() for ch in t)]
+
+    return filtered
 
 
 def np_chunk(tree):
@@ -72,7 +99,13 @@ def np_chunk(tree):
     whose label is "NP" that does not itself contain any other
     noun phrases as subtrees.
     """
-    raise NotImplementedError
+    chunks = []
+    for subtree in tree.subtrees():
+        if subtree.label() == "NP":
+            # Check if this NP has another NP as a descendant
+            if not any(child.label() == "NP" for child in subtree.subtrees(lambda t: t != subtree)):
+                chunks.append(subtree)
+    return chunks
 
 
 if __name__ == "__main__":
